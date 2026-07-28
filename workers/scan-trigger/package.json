@@ -1,0 +1,34 @@
+{
+  "name": "scan-trigger",
+  "description": "Tags new artifacts PENDING and submits scans to HiddenLayer",
+  "version": "1.0.0",
+  "scripts": {
+    "deploy": "jf worker deploy",
+    "undeploy": "jf worker rm \"scan-trigger\"",
+    "test": "jest"
+  },
+  "license": "ISC",
+  "jest": {
+    "moduleFileExtensions": [
+      "ts",
+      "js"
+    ],
+    "rootDir": ".",
+    "testEnvironment": "node",
+    "clearMocks": true,
+    "maxConcurrency": 1,
+    "testRegex": "\\.spec\\.ts$",
+    "moduleDirectories": [
+      "node_modules"
+    ],
+    "collectCoverageFrom": [
+      "**/*.ts"
+    ],
+    "coverageDirectory": "../coverage",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "testRunner": "jest-jasmine2",
+    "verbose": true
+  }
+}
