@@ -1,0 +1,20 @@
+{
+    "name": "result-poller",
+    "description": "Polls HiddenLayer scan results and updates artifact properties",
+    "filterCriteria": {
+        "schedule": {
+            "cron": "*/5 * * * *",
+            "timezone": "UTC"
+        }
+    },
+    "secrets": {
+        "HL_CLIENT_ID": "",
+        "HL_CLIENT_SECRET": ""
+    },
+    "sourceCodePath": "./worker.ts",
+    "action": "SCHEDULED_EVENT",
+    "enabled": false,
+    "debug": false,
+    "projectKey": "",
+    "application": "worker"
+}
