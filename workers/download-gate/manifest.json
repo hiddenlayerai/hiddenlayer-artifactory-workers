@@ -1,0 +1,16 @@
+{
+    "name": "download-gate",
+    "description": "Checks artifact scan status before allowing download",
+    "filterCriteria": {
+        "artifactFilterCriteria": {
+            "repoKeys": ["example-repo-local"]
+        }
+    },
+    "secrets": {},
+    "sourceCodePath": "./worker.ts",
+    "action": "BEFORE_DOWNLOAD",
+    "enabled": false,
+    "debug": false,
+    "projectKey": "",
+    "application": "artifactory"
+}
