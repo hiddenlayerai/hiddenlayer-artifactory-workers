@@ -57,7 +57,21 @@ The Workers are deployed using the [JFrog CLI (`jf`)](https://docs.jfrog-applica
 jf c add
 ```
 
-Deploy each Worker from its directory:
+The Scan Trigger and Result Poller require HiddenLayer API credentials stored as encrypted Worker secrets. Before deploying, add them to each Worker's `manifest.json` using the CLI. The Download Gate does not require any secrets.
+
+```bash
+cd workers/scan-trigger
+jf worker add-secret HL_CLIENT_ID
+jf worker add-secret HL_CLIENT_SECRET
+
+cd ../result-poller
+jf worker add-secret HL_CLIENT_ID
+jf worker add-secret HL_CLIENT_SECRET
+```
+
+Each command prompts for an encryption password and the secret value. Use the same encryption password for all secrets within a given manifest—the CLI uses it to decrypt them at deploy time.
+
+Then deploy each Worker:
 
 ```bash
 cd workers/scan-trigger && jf worker deploy
@@ -65,7 +79,7 @@ cd workers/result-poller && jf worker deploy
 cd workers/download-gate && jf worker deploy
 ```
 
-The CLI prompts for secret values (HiddenLayer client ID and secret) on the Scan Trigger and Result Poller deployments. All three Workers deploy disabled by default; enable each after verifying its configuration.
+The CLI prompts for the secrets password on deploy to decrypt the values before sending them to the platform over TLS. All three Workers deploy disabled by default; enable each after verifying its configuration.
 
 ### Platform UI
 
