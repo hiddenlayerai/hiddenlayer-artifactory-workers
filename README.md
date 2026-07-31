@@ -14,15 +14,50 @@ The integration is a pipeline of three independent Workers that communicate thro
 
 The three Workers share no code and no state other than artifact properties. Each Worker's README contains its full configuration reference, deployment instructions, and behavioral documentation.
 
+## Platform Limits
+
+JFrog Workers run under strict resource constraints. Each execution is limited to **20 seconds of wall-clock time**, **1 second of CPU time**, and **64 MB of memory**. The Workers are designed to operate well within these bounds, but they shape the integration's architecture—scans are submitted asynchronously rather than computed inline, and the Result Poller processes artifacts in bounded batches across multiple runs rather than all at once.
+
+HiddenLayer's Model Scanner imposes its own limits on scan size and throughput. These limits depend on your HiddenLayer plan and may affect how quickly large backlogs are processed. Consult your HiddenLayer account documentation for details.
+
 ## Prerequisites
 
 - **JFrog Platform:** Enterprise X or Enterprise+ license with the Workers feature enabled.
 - **Enforced download blocking:** Requires JFrog Advanced Security (JAS) or Curation entitlements. Without these, the Download Gate Worker still runs, but stop directives are logged as warnings rather than enforced. The Workers need no configuration change between the two situations.
 - **HiddenLayer API credentials:** A client ID and secret from the HiddenLayer console (Settings → API Clients) with permissions to submit scans and read scan results. Required by the Scan Trigger and Result Poller Workers; the Download Gate Worker needs no credentials.
 
+## Overriding a Blocked Download
+
+If the Download Gate blocks an artifact you need to access—because a scan is still in progress, a scan failed, or you disagree with the verdict—you can override it by setting the artifact's `hiddenlayer.status` property directly.
+
+Using the JFrog CLI:
+
+```bash
+jf rt set-props "my-repo/path/to/artifact" "hiddenlayer.status=SAFE"
+```
+
+Using the REST API:
+
+```bash
+curl -u admin:password -X PUT \
+  "https://your-instance.jfrog.io/artifactory/api/storage/my-repo/path/to/artifact?properties=hiddenlayer.status=SAFE"
+```
+
+Or through the Artifactory UI: navigate to the artifact, open the Properties tab, and set `hiddenlayer.status` to `SAFE`.
+
+The Download Gate trusts this property at face value—setting it to `SAFE` allows the download immediately. The next scan cycle will not overwrite a manually set status unless the artifact is re-uploaded (which resets all properties). Restrict Annotate permission on monitored repositories to administrators and the integration's service identity to prevent unauthorized overrides.
+
 ## Installation
 
-Each Worker is deployed independently. From the repository root:
+### JFrog CLI
+
+The Workers are deployed using the [JFrog CLI (`jf`)](https://docs.jfrog-applications.jfrog.io/jfrog-applications/jfrog-cli/install). Once installed, configure it to point at your Artifactory instance:
+
+```bash
+jf c add
+```
+
+Deploy each Worker from its directory:
 
 ```bash
 cd workers/scan-trigger && jf worker deploy
@@ -32,7 +67,9 @@ cd workers/download-gate && jf worker deploy
 
 The CLI prompts for secret values (HiddenLayer client ID and secret) on the Scan Trigger and Result Poller deployments. All three Workers deploy disabled by default; enable each after verifying its configuration.
 
-Workers can also be deployed through the JFrog Platform UI (Administration → Workers). See each Worker's README for detailed UI deployment steps.
+### Platform UI
+
+Workers can also be deployed through the JFrog Platform UI without the CLI. Navigate to Administration → Workers, create a new Worker with the appropriate action type, paste the contents of `worker.ts`, configure repository targeting and secrets, and enable. See each Worker's README for step-by-step instructions.
 
 ## Configuration
 
