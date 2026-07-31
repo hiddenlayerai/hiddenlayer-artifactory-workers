@@ -1,8 +1,6 @@
 import type { PlatformContext } from "jfrog-workers";
 import { ScheduledEventRequest, ScheduledEventResponse } from "./types";
 
-declare function btoa(data: string): string;
-
 // --- Configuration ---
 // All tunable settings. Secrets (HL_CLIENT_ID, HL_CLIENT_SECRET) and the cron
 // schedule live in manifest.json.
@@ -14,7 +12,6 @@ export const config = {
   hlAuthBaseUrl: "https://auth.hiddenlayer.ai",
   concurrencyLimit: 25,
   remainingTimeReserveMs: 10_000,
-  perCallWaitBoundMs: 2_000,
   stalenessThresholdMs: 30 * 60 * 1_000,
   retryCap: 5,
   signedUrlTtlSecs: 4 * 60 * 60,
@@ -161,25 +158,25 @@ function determineVerdict(report: ScanReport): VerdictResult {
 
 async function checkOverwriteGuard(context: PlatformContext, item: WorkItem, expectedScanId: string): Promise<boolean> {
   try {
-    const response = await boundedPlatformCall(
-      context.clients.platformHttp.get(`/artifactory/api/storage/${artifactPath(item)}?properties=hiddenlayer.scan_id`),
+    const response = await context.clients.platformHttp.get(
+      `/artifactory/api/storage/${artifactPath(item)}?properties=hiddenlayer.scan_id`,
     );
     const values = response.data?.properties?.["hiddenlayer.scan_id"] as unknown;
     if (!Array.isArray(values) || values.length !== 1) return false;
     return values[0] === expectedScanId;
   } catch (err) {
-    console.log(`Overwrite guard skip for ${artifactKey(item)}:`, err);
+    console.log(
+      `Overwrite guard skip for ${artifactKey(item)}: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`,
+    );
     return false;
   }
 }
 
 async function writeProperties(context: PlatformContext, item: WorkItem, props: Record<string, string>): Promise<void> {
-  await boundedPlatformCall(
-    context.clients.platformHttp.patch(
-      `/artifactory/api/metadata/${artifactPath(item)}?atomicProperties=1&recursiveProperties=0`,
-      { props },
-      { "Content-Type": "application/json" },
-    ),
+  await context.clients.platformHttp.patch(
+    `/artifactory/api/metadata/${artifactPath(item)}?atomicProperties=1&recursiveProperties=0`,
+    { props },
+    { "Content-Type": "application/json" },
   );
 }
 
@@ -193,18 +190,6 @@ async function markFailed(context: PlatformContext, item: WorkItem): Promise<voi
     props["hiddenlayer.next_retry_at"] = nextRetryAt;
   }
   await writeProperties(context, item, props);
-}
-
-async function boundedPlatformCall<T>(call: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("JFrog call timed out")), config.perCallWaitBoundMs);
-  });
-  try {
-    return await Promise.race([call, timeout]);
-  } finally {
-    clearTimeout(timer!);
-  }
 }
 
 async function processPool<T>(
@@ -239,12 +224,10 @@ function deriveModelName(item: WorkItem): string {
 }
 
 async function mintSignedUrl(context: PlatformContext, item: WorkItem): Promise<string> {
-  const response = await boundedPlatformCall(
-    context.clients.platformHttp.post("/artifactory/api/signed/url", {
-      repo_path: artifactPath(item),
-      valid_for_secs: config.signedUrlTtlSecs,
-    }),
-  );
+  const response = await context.clients.platformHttp.post("/artifactory/api/signed/url", {
+    repo_path: artifactPath(item),
+    valid_for_secs: config.signedUrlTtlSecs,
+  });
   return response.data as string;
 }
 
@@ -269,7 +252,6 @@ async function submitScan(
     },
     {
       headers: { Authorization: `Bearer ${token}` },
-      timeout: config.perCallWaitBoundMs,
     },
   );
   return response.data.scan_id;
@@ -304,6 +286,21 @@ function formatMessage(counters: RunCounters): string {
   return parts.join(" ");
 }
 
+function toBase64(str: string): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let result = "";
+  for (let i = 0; i < str.length; i += 3) {
+    const a = str.charCodeAt(i);
+    const b = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
+    const c = i + 2 < str.length ? str.charCodeAt(i + 2) : 0;
+    result += chars[a >> 2];
+    result += chars[((a & 3) << 4) | (b >> 4)];
+    result += i + 1 < str.length ? chars[((b & 15) << 2) | (c >> 6)] : "=";
+    result += i + 2 < str.length ? chars[c & 63] : "=";
+  }
+  return result;
+}
+
 export default async (context: PlatformContext, _data: ScheduledEventRequest): Promise<ScheduledEventResponse> => {
   try {
     const clientId = context.secrets.get("HL_CLIENT_ID");
@@ -311,7 +308,7 @@ export default async (context: PlatformContext, _data: ScheduledEventRequest): P
 
     let token: string;
     try {
-      const credentials = btoa(`${clientId}:${clientSecret}`);
+      const credentials = toBase64(`${clientId}:${clientSecret}`);
       const response = await context.clients.axios.post(
         `${config.hlAuthBaseUrl}/oauth2/token`,
         "grant_type=client_credentials",
@@ -320,37 +317,32 @@ export default async (context: PlatformContext, _data: ScheduledEventRequest): P
             Authorization: `Basic ${credentials}`,
             "Content-Type": "application/x-www-form-urlencoded",
           },
-          timeout: config.perCallWaitBoundMs,
         },
       );
       token = response.data.access_token;
     } catch (err) {
-      console.error("Token exchange failed:", err);
+      console.error(`Token exchange failed: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`);
       return { message: "Token exchange failed." };
     }
 
     let pendingRows: AqlResultRow[];
     let failedRows: AqlResultRow[];
     try {
-      const pendingResponse = await boundedPlatformCall(
-        context.clients.platformHttp.post(
-          "/artifactory/api/search/aql",
-          buildAqlQuery("PENDING", config.monitoredRepositories),
-          { "Content-Type": "text/plain" },
-        ),
+      const pendingResponse = await context.clients.platformHttp.post(
+        "/artifactory/api/search/aql",
+        buildAqlQuery("PENDING", config.monitoredRepositories),
+        { "Content-Type": "text/plain" },
       );
       pendingRows = pendingResponse.data.results;
 
-      const failedResponse = await boundedPlatformCall(
-        context.clients.platformHttp.post(
-          "/artifactory/api/search/aql",
-          buildAqlQuery("FAILED", config.monitoredRepositories),
-          { "Content-Type": "text/plain" },
-        ),
+      const failedResponse = await context.clients.platformHttp.post(
+        "/artifactory/api/search/aql",
+        buildAqlQuery("FAILED", config.monitoredRepositories),
+        { "Content-Type": "text/plain" },
       );
       failedRows = failedResponse.data.results;
     } catch (err) {
-      console.error("Discovery failed:", err);
+      console.error(`Discovery failed: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`);
       return { message: "Discovery failed." };
     }
 
@@ -399,7 +391,6 @@ export default async (context: PlatformContext, _data: ScheduledEventRequest): P
             `${config.hlApiBaseUrl}/scan/v3/results/${item.scanId}?has_detections=true`,
             {
               headers: { Authorization: `Bearer ${token}` },
-              timeout: config.perCallWaitBoundMs,
             },
           );
           const report: ScanReport = reportResponse.data;
@@ -460,7 +451,9 @@ export default async (context: PlatformContext, _data: ScheduledEventRequest): P
             return;
           }
 
-          console.error(`Error processing ${artifactKey(item)}:`, err);
+          console.error(
+            `Error processing ${artifactKey(item)}: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`,
+          );
           counters.errored++;
           counters.unprocessed--;
         }
@@ -530,7 +523,9 @@ export default async (context: PlatformContext, _data: ScheduledEventRequest): P
           counters.reTriggered++;
           counters.unprocessed--;
         } catch (err) {
-          console.error(`Error re-triggering ${artifactKey(item)}:`, err);
+          console.error(
+            `Error re-triggering ${artifactKey(item)}: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`,
+          );
           counters.errored++;
           counters.unprocessed--;
         }
@@ -539,7 +534,9 @@ export default async (context: PlatformContext, _data: ScheduledEventRequest): P
 
     return { message: formatMessage(counters) };
   } catch (err: unknown) {
-    console.error("Unexpected error in result-poller:", err);
+    console.error(
+      `Unexpected error in result-poller: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`,
+    );
     return { message: "Unexpected error in result-poller." };
   }
 };
