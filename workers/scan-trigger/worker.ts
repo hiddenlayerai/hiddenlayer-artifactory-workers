@@ -151,24 +151,8 @@ async function submitScan(
     Authorization: `Bearer ${token}`,
     "User-Agent": "hiddenlayer-jfrog-worker/1.0",
   };
-  console.log(`DIAG submitScan url=${url}`);
-  console.log(`DIAG submitScan body=${JSON.stringify(body)}`);
-  console.log(`DIAG submitScan auth=Bearer ${token.substring(0, 10)}...`);
-  try {
-    const response = await context.clients.axios.post(url, body, { headers });
-    console.log(`DIAG submitScan response status=${response.status}`);
-    return response.data.scan_id;
-  } catch (err: unknown) {
-    const e = err as Record<string, unknown>;
-    console.error(`DIAG submitScan error status=${e.status} code=${e.code} message=${e.message}`);
-    if (e.response) {
-      const resp = e.response as Record<string, unknown>;
-      console.error(
-        `DIAG submitScan response status=${resp.status} headers=${JSON.stringify(resp.headers)} data=${JSON.stringify(resp.data)}`,
-      );
-    }
-    throw err;
-  }
+  const response = await context.clients.axios.post(url, body, { headers });
+  return response.data.scan_id;
 }
 
 export default async (context: PlatformContext, data: AfterCreateRequest): Promise<AfterCreateResponse> => {
