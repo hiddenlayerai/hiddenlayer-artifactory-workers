@@ -1,19 +1,18 @@
 {
-    "name": "scan-trigger",
-    "description": "Tags new artifacts PENDING and submits scans to HiddenLayer",
-    "filterCriteria": {
-        "artifactFilterCriteria": {
-            "repoKeys": ["example-repo-local"]
-        }
-    },
-    "secrets": {
-        "HL_CLIENT_ID": "",
-        "HL_CLIENT_SECRET": ""
-    },
-    "sourceCodePath": "./worker.ts",
-    "action": "AFTER_CREATE",
-    "enabled": false,
-    "debug": false,
-    "projectKey": "",
-    "application": "artifactory"
+  "name": "scan-trigger",
+  "description": "Tags new artifacts PENDING and submits scans to HiddenLayer",
+  "sourceCodePath": "./worker.ts",
+  "action": "AFTER_CREATE",
+  "enabled": false,
+  "debug": false,
+  "projectKey": "",
+  "secrets": {},
+  "filterCriteria": {
+    "artifactFilterCriteria": {
+      "repoKeys": [
+        "example-repo-local"
+      ]
+    }
+  },
+  "application": "artifactory"
 }

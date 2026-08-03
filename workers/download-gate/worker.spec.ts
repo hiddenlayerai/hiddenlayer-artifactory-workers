@@ -275,20 +275,4 @@ describe("download-gate", () => {
     expect(result.status).toBe(config.MISSING_VERDICT);
     expect(context.clients.platformHttp.patch).not.toHaveBeenCalled();
   });
-
-  it("property read that never settles times out to read-failure path (no writes)", async () => {
-    config.perCallWaitBoundMs = 50;
-    (context.clients.platformHttp.get as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
-    const result = await runWorker(context, makeRequest(makeRepoPath()));
-    expect(result.status).toBe(config.MISSING_VERDICT);
-    expect(context.clients.platformHttp.patch).not.toHaveBeenCalled();
-  });
-
-  it("backfill write that never settles times out but verdict is unchanged", async () => {
-    config.perCallWaitBoundMs = 50;
-    setupPropertyRead(context, undefined);
-    (context.clients.platformHttp.patch as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
-    const result = await runWorker(context, makeRequest(makeRepoPath()));
-    expect(result.status).toBe(config.MISSING_VERDICT);
-  });
 });

@@ -10,25 +10,12 @@ export const config = {
   PENDING_VERDICT: DownloadStatus.DOWNLOAD_STOP as DownloadStatus,
   FAILED_VERDICT: DownloadStatus.DOWNLOAD_STOP as DownloadStatus,
   MISSING_VERDICT: DownloadStatus.DOWNLOAD_STOP as DownloadStatus,
-  perCallWaitBoundMs: 2_000,
 };
 
 // --- End Configuration ---
 
 function makeResponse(status: DownloadStatus, message: string): BeforeDownloadResponse {
   return { status, message, headers: {} };
-}
-
-async function boundedPlatformCall<T>(call: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("JFrog call timed out")), config.perCallWaitBoundMs);
-  });
-  try {
-    return await Promise.race([call, timeout]);
-  } finally {
-    clearTimeout(timer!);
-  }
 }
 
 function isPlatformHttpError(err: unknown): err is { message: string; status: number } {
@@ -42,20 +29,20 @@ function isPlatformHttpError(err: unknown): err is { message: string; status: nu
 
 async function backfillTag(context: PlatformContext, repoPath: string): Promise<void> {
   try {
-    await boundedPlatformCall(
-      context.clients.platformHttp.patch(
-        `/artifactory/api/metadata/${repoPath}?atomicProperties=1&recursiveProperties=0`,
-        {
-          props: {
-            "hiddenlayer.status": "PENDING",
-            "hiddenlayer.scan_requested_at": new Date(Date.now()).toISOString(),
-          },
+    await context.clients.platformHttp.patch(
+      `/artifactory/api/metadata/${repoPath}?atomicProperties=1&recursiveProperties=0`,
+      {
+        props: {
+          "hiddenlayer.status": "PENDING",
+          "hiddenlayer.scan_requested_at": new Date(Date.now()).toISOString(),
         },
-        { "Content-Type": "application/json" },
-      ),
+      },
+      { "Content-Type": "application/json" },
     );
   } catch (err: unknown) {
-    console.log(`Backfill tag failed for ${repoPath}:`, err);
+    console.log(
+      `Backfill tag failed for ${repoPath}: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`,
+    );
   }
 }
 
@@ -73,9 +60,7 @@ export default async (context: PlatformContext, data: BeforeDownloadRequest): Pr
     let properties: Record<string, unknown> | undefined;
 
     try {
-      const response = await boundedPlatformCall(
-        context.clients.platformHttp.get(`/artifactory/api/storage/${repoPath}?properties`),
-      );
+      const response = await context.clients.platformHttp.get(`/artifactory/api/storage/${repoPath}?properties`);
       properties = response.data?.properties as Record<string, unknown> | undefined;
     } catch (readErr: unknown) {
       if (isPlatformHttpError(readErr) && readErr.status === 404) {
@@ -86,7 +71,9 @@ export default async (context: PlatformContext, data: BeforeDownloadRequest): Pr
         );
       }
 
-      console.log(`Property read failed for ${repoPath}:`, readErr);
+      console.log(
+        `Property read failed for ${repoPath}: ${JSON.stringify(readErr, Object.getOwnPropertyNames(readErr as object))}`,
+      );
       return makeResponse(config.MISSING_VERDICT, `HiddenLayer: could not determine scan status for ${repoPath}`);
     }
 
@@ -132,7 +119,7 @@ export default async (context: PlatformContext, data: BeforeDownloadRequest): Pr
         );
     }
   } catch (err: unknown) {
-    console.error("Unexpected error:", err);
+    console.error(`Unexpected error: ${JSON.stringify(err, Object.getOwnPropertyNames(err as object))}`);
     return makeResponse(config.MISSING_VERDICT, `HiddenLayer: could not determine scan status for ${repoPath}`);
   }
 };

@@ -27,9 +27,16 @@ The Worker authenticates to the HiddenLayer API using OAuth2 client credentials.
 - **`HL_CLIENT_ID`**—the HiddenLayer API client ID
 - **`HL_CLIENT_SECRET`**—the HiddenLayer API client secret
 
-These are supplied as encrypted Worker secrets at deploy time. The source contains only empty placeholders.
-
 To obtain credentials, create an API client in the HiddenLayer console (Settings → API Clients) with permissions to submit scans and read scan results.
+
+Add the secrets to `manifest.json` before deploying:
+
+```bash
+jf worker add-secret HL_CLIENT_ID
+jf worker add-secret HL_CLIENT_SECRET
+```
+
+Each command prompts for an encryption password and the secret value. Use the same encryption password for both secrets—the CLI uses it to decrypt them at deploy time. Alternatively, secrets can be entered directly through the Platform UI when creating the Worker (see [Deployment](#deployment)).
 
 ## Repository Targeting
 
@@ -81,7 +88,7 @@ cd workers/scan-trigger
 jf worker deploy
 ```
 
-The CLI prompts for secret values if they are empty in `manifest.json`. The Worker deploys disabled by default (`"enabled": false`); enable it after verifying the configuration.
+The CLI prompts for the secrets encryption password to decrypt the values added via `jf worker add-secret` (see [Secrets](#secrets)). The Worker deploys disabled by default (`"enabled": false`); enable it after verifying the configuration.
 
 ### Platform UI
 

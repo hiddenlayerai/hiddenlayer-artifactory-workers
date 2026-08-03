@@ -1476,38 +1476,6 @@ describe("result-poller", () => {
     });
   });
 
-  describe("per-call wait bound on a JFrog call", () => {
-    it("abandons a call that never settles after the bound", async () => {
-      setupTokenExchange(context);
-      config.perCallWaitBoundMs = 100;
-
-      (context.clients.platformHttp.post as jest.Mock)
-        .mockResolvedValueOnce({
-          status: 200,
-          data: {
-            results: [
-              makeAqlRow("repo-a", "models/a", "a.json", [
-                { key: "hiddenlayer.status", value: "PENDING" },
-                { key: "hiddenlayer.scan_id", value: "scan-a" },
-              ]),
-            ],
-          },
-        })
-        .mockResolvedValueOnce({ status: 200, data: { results: [] } });
-
-      (context.clients.axios.get as jest.Mock).mockResolvedValueOnce({
-        data: SAFE_REPORT,
-      });
-
-      (context.clients.platformHttp.get as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
-
-      const result = await runWorker(context, { triggerID: "test" });
-
-      expect(context.clients.platformHttp.patch).not.toHaveBeenCalled();
-      expect(typeof result.message).toBe("string");
-    }, 10_000);
-  });
-
   describe("concurrency limit", () => {
     it("processes no more than the configured number of artifacts simultaneously", async () => {
       config.concurrencyLimit = 2;
